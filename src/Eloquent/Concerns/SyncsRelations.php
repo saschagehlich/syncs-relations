@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
 /**
@@ -73,6 +74,7 @@ use RuntimeException;
  */
 trait SyncsRelations {
     // protected $syncedRelations = [];
+    protected $relationshipData = [];
 
     /**
      * @return string[]
@@ -101,6 +103,7 @@ trait SyncsRelations {
             if ($new) {
                 $data = $new;
             }
+
             if ($data || $delete) {
                 $this->fillRelation($relationName, $data, !!$delete, !!$new);
             }
@@ -108,6 +111,18 @@ trait SyncsRelations {
 
         return $this;
     }
+
+    public function save(array $options = [])
+    {
+        $syncedRelations = $this->getSyncedRelations();
+        foreach ($syncedRelations as $relationName) {
+            if (!array_key_exists($relationName, $this->relationshipData)) continue;
+            $this->saveRelation($relationName);
+        }
+
+        return parent::save($options);
+    }
+
 
     /**
      * Fill the given relation with the given data
@@ -127,7 +142,7 @@ trait SyncsRelations {
         if ($relation instanceof HasMany || $relation instanceof BelongsToMany) {
             $this->fillManyRelation($relation, $data);
         } else if ($relation instanceof BelongsTo) {
-            $this->fillBelongsToRelation($relation, $data, $delete, $new);
+            $this->fillBelongsToRelation($relationName, $relation, $data, $delete, $new);
         } else if ($relation instanceof HasOne) {
             $this->fillHasOneRelation($relation, $data, $delete, $new);
         } else {
@@ -137,28 +152,58 @@ trait SyncsRelations {
         return $this;
     }
 
-    /**
-     * @param BelongsTo $relation
-     * @param $data
-     * @param bool $delete
-     * @param bool $new
-     */
-    protected function fillBelongsToRelation (BelongsTo $relation, $data, bool $delete, bool $new) {
+    protected function saveRelation (string $relationName) {
+        $methodName = camel_case($relationName);
+        if (!method_exists($this, $methodName)) return $this;
+
+        /** @var Relation $relation */
+        $relation = $this->$methodName();
+        if ($relation instanceof HasMany || $relation instanceof BelongsToMany) {
+            $this->saveManyRelation($relation);
+        } else if ($relation instanceof BelongsTo) {
+            $this->saveBelongsToRelation($relationName, $relation);
+        } else if ($relation instanceof HasOne) {
+            $this->saveHasOneRelation($relation);
+        }
+
+        return $this;
+    }
+
+
+    protected function fillBelongsToRelation (string $relationName, BelongsTo $relation, $data, bool $delete, bool $new) {
         $relatedModel = $relation->getModel();
 
         if ($delete) {
             $instance = null;
         } else if ($new) {
-            $instance = $relatedModel::create($data);
+            $instance = new $relatedModel($data);
         } else if ($data instanceof Model) {
             $instance = $data;
         } else {
             $instance = $relation->getResults();
             $instance->fill($data);
-            $instance->save();
         }
 
-        $relation->associate($instance);
+        // This is set temporarily so that we can access the related instance
+        // even though it is not saved yet.
+        $this->$relationName = $instance;
+        $this->relationshipData[$relationName] = $instance;
+    }
+
+    protected function saveBelongsToRelation (string $relationName, BelongsTo $relation) {
+        // Modify attributes so that the temporarily set (see `fillBelongsToRelation`)
+        // attribute is no longer there and is Eloquent does not try to write it
+        // to the database.
+        $attributes = $this->getAttributes();
+        unset($attributes[$relationName]);
+        $this->setRawAttributes($attributes);
+
+        /** @var Model $model */
+        $model = $this->relationshipData[$relationName];
+        if ($model != null) {
+            $model->save();
+        }
+        $relation->associate($model);
     }
 
     protected function fillHasOneRelation (HasOne $relation, $data, bool $delete, bool $new) {
@@ -167,14 +212,17 @@ trait SyncsRelations {
             $relation->delete();
         } else if ($new) {
             $instance = $relatedModel::create($data);
-            $relation->save($instance);
+            $instance->setAttribute($relation->getForeignKeyName(), $relation->getParentKey());
         } else if ($data instanceof Model) {
-            $relation->save($data);
+            $data->setAttribute($relation->getForeignKeyName(), $relation->getParentKey());
         } else {
             $instance = $relation->getResults();
             $instance->fill($data);
-            $instance->save();
         }
+    }
+
+    protected function saveHasOneRelation (HasOne $relation) {
+
     }
 
     /**
@@ -226,5 +274,9 @@ trait SyncsRelations {
                 $relation->save($instance);
             }
         }
+    }
+
+    protected function saveManyRelation ($relation) {
+
     }
 }
