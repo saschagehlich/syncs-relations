@@ -4,6 +4,7 @@ namespace SyncsRelations\Eloquent\Concerns;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Support\Collection;
@@ -125,6 +126,8 @@ trait SyncsRelations {
             $this->fillHasManyRelation($relation, $data);
         } else if ($relation instanceof BelongsTo) {
             $this->fillBelongsToRelation($relation, $data, $delete, $new);
+        } else if ($relation instanceof BelongsToMany) {
+            $this->fillHasManyRelation($relation, $data);
         } else {
             throw new RuntimeException("Could not fill relation {$relationName}");
         }
@@ -150,16 +153,28 @@ trait SyncsRelations {
         $relation->associate($instance);
     }
 
-    protected function fillHasManyRelation (HasMany $relation, array $data) {
+    /**
+     * @param HasMany|BelongsToMany $relation
+     * @param array $data
+     */
+    protected function fillHasManyRelation ($relation, array $data) {
         $children = $relation->getResults();
         $relatedModel = $relation->getModel();
         $childIds = $children->map(function ($child) { return $child->id; })->toArray();
         $dataContainsArrays = count(array_filter($data, 'is_array')) == count($data);
+        $dataContainsInstances = false;
+        if (!$dataContainsArrays && count($data) > 0) {
+            $dataContainsInstances = $data[0] instanceof Model;
+        }
 
         if (!$dataContainsArrays) {
             $ids = $data;
         } else {
             $ids = array_keys($data);
+        }
+
+        if ($dataContainsInstances) {
+            $ids = array_pluck($data, 'id');
         }
 
         $detachedIds = array_diff($childIds, $ids);
@@ -169,8 +184,14 @@ trait SyncsRelations {
 
         if (!$dataContainsArrays) {
             $attachedIds = array_diff($ids, $childIds);
-            foreach ($attachedIds as $id) {
-                $instance = $relatedModel->where('id', $id)->first();
+            foreach ($attachedIds as $index => $id) {
+                if ($dataContainsInstances) {
+                    $instance = array_first($data, function ($instance) use ($id) {
+                        return $instance->id == $id;
+                    });
+                } else {
+                    $instance = $relatedModel->where('id', $id)->first();
+                }
                 $relation->save($instance);
             }
         } else {

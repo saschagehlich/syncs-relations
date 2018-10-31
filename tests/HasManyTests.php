@@ -7,7 +7,7 @@ use SyncsRelations\Tests\Models\Wheel;
 
 class HasManyTests extends TestCase
 {
-    public function testVehicleAttachWheels() {
+    public function testVehicleAttachWheelsById() {
         $wheels = [
             Wheel::create([ 'size' => 1 ]),
             Wheel::create([ 'size' => 2 ]),
@@ -23,7 +23,7 @@ class HasManyTests extends TestCase
         $this->assertCount(3, $vehicle->wheels);
     }
 
-    public function testVehicleDetachWheels() {
+    public function testVehicleDetachWheelsById() {
         $wheels = [
             Wheel::create([ 'size' => 1 ]),
             Wheel::create([ 'size' => 2 ]),
@@ -45,7 +45,45 @@ class HasManyTests extends TestCase
         $this->assertEquals(2, $vehicle->wheels[0]->size);
     }
 
-    public function testVehicleAddWheels() {
+    public function testVehicleAttachWheelsByModel() {
+        $wheels = [
+            Wheel::create([ 'size' => 1 ]),
+            Wheel::create([ 'size' => 2 ]),
+            Wheel::create([ 'size' => 3 ])
+        ];
+        $vehicle = Vehicle::create([
+            'name' => 'Car'
+        ]);
+        $vehicle->fill([
+            'wheels' => $wheels
+        ]);
+        $vehicle = $vehicle->fresh();
+        $this->assertCount(3, $vehicle->wheels);
+    }
+
+    public function testVehicleDetachWheelsByModel() {
+        $wheels = [
+            Wheel::create([ 'size' => 1 ]),
+            Wheel::create([ 'size' => 2 ]),
+            Wheel::create([ 'size' => 3 ])
+        ];
+        $vehicle = Vehicle::create([
+            'name' => 'Car'
+        ]);
+        $vehicle->wheels->add($wheels);
+        $vehicle->save();
+
+        $vehicle->fill([
+            'wheels' => [
+                $wheels[1]
+            ]
+        ]);
+        $vehicle = $vehicle->fresh();
+        $this->assertCount(1, $vehicle->wheels);
+        $this->assertEquals(2, $vehicle->wheels[0]->size);
+    }
+
+    public function testVehicleCreateWheels() {
         $vehicle = Vehicle::create([
             'name' => 'Car'
         ]);
