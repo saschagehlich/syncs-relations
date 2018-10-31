@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Support\Collection;
 use RuntimeException;
@@ -89,6 +90,8 @@ trait SyncsRelations {
      * @throws \Illuminate\Database\Eloquent\MassAssignmentException
      */
     public function fill(array $attributes) {
+        parent::fill($attributes);
+
         $syncedRelations = $this->getSyncedRelations();
         foreach ($syncedRelations as $relationName) {
             $data = array_pull($attributes, $relationName);
@@ -103,7 +106,6 @@ trait SyncsRelations {
             }
         }
 
-        parent::fill($attributes);
         return $this;
     }
 
@@ -122,12 +124,12 @@ trait SyncsRelations {
 
         /** @var Relation $relation */
         $relation = $this->$methodName();
-        if ($relation instanceof HasMany) {
-            $this->fillHasManyRelation($relation, $data);
+        if ($relation instanceof HasMany || $relation instanceof BelongsToMany) {
+            $this->fillManyRelation($relation, $data);
         } else if ($relation instanceof BelongsTo) {
             $this->fillBelongsToRelation($relation, $data, $delete, $new);
-        } else if ($relation instanceof BelongsToMany) {
-            $this->fillHasManyRelation($relation, $data);
+        } else if ($relation instanceof HasOne) {
+            $this->fillHasOneRelation($relation, $data, $delete, $new);
         } else {
             throw new RuntimeException("Could not fill relation {$relationName}");
         }
@@ -135,6 +137,12 @@ trait SyncsRelations {
         return $this;
     }
 
+    /**
+     * @param BelongsTo $relation
+     * @param $data
+     * @param bool $delete
+     * @param bool $new
+     */
     protected function fillBelongsToRelation (BelongsTo $relation, $data, bool $delete, bool $new) {
         $relatedModel = $relation->getModel();
 
@@ -153,11 +161,27 @@ trait SyncsRelations {
         $relation->associate($instance);
     }
 
+    protected function fillHasOneRelation (HasOne $relation, $data, bool $delete, bool $new) {
+        $relatedModel = $relation->getRelated();
+        if ($delete) {
+            $relation->delete();
+        } else if ($new) {
+            $instance = $relatedModel::create($data);
+            $relation->save($instance);
+        } else if ($data instanceof Model) {
+            $relation->save($data);
+        } else {
+            $instance = $relation->getResults();
+            $instance->fill($data);
+            $instance->save();
+        }
+    }
+
     /**
      * @param HasMany|BelongsToMany $relation
      * @param array $data
      */
-    protected function fillHasManyRelation ($relation, array $data) {
+    protected function fillManyRelation ($relation, array $data) {
         $children = $relation->getResults();
         $relatedModel = $relation->getModel();
         $childIds = $children->map(function ($child) { return $child->id; })->toArray();
