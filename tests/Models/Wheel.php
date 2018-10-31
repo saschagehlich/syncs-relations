@@ -9,7 +9,7 @@ class Wheel extends Model {
     use SyncsRelations;
     protected $syncedRelations = ['car'];
 
-    protected $fillable = ['size'];
+    protected $fillable = ['size', 'vehicle_id'];
     public $timestamps = false;
 
     public function car () {

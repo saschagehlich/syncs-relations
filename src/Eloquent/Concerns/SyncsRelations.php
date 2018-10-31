@@ -3,9 +3,11 @@
 namespace SyncsRelations\Eloquent\Concerns;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Support\Collection;
+use RuntimeException;
 
 /**
  * This trait enables models to be filled with nested relationship data.
@@ -86,15 +88,21 @@ trait SyncsRelations {
      * @throws \Illuminate\Database\Eloquent\MassAssignmentException
      */
     public function fill(array $attributes) {
-        parent::fill($attributes);
-
         $syncedRelations = $this->getSyncedRelations();
         foreach ($syncedRelations as $relationName) {
             $data = array_pull($attributes, $relationName);
-            if ($data) {
-                $this->fillRelation($relationName, $data);
+            $delete = array_pull($attributes, 'delete_' . $relationName);
+            $new = array_pull($attributes, 'new_' . $relationName);
+
+            if ($new) {
+                $data = $new;
+            }
+            if ($data || $delete) {
+                $this->fillRelation($relationName, $data, !!$delete, !!$new);
             }
         }
+
+        parent::fill($attributes);
         return $this;
     }
 
@@ -102,10 +110,12 @@ trait SyncsRelations {
      * Fill the given relation with the given data
      *
      * @param string $relationName
-     * @param array $data
+     * @param mixed $data
+     * @param bool $delete
+     * @param bool $new
      * @return $this;
      */
-    protected function fillRelation (string $relationName, array $data) {
+    protected function fillRelation (string $relationName, $data, bool $delete, bool $new) {
         $methodName = camel_case($relationName);
         if (!method_exists($this, $methodName)) return $this;
 
@@ -113,9 +123,31 @@ trait SyncsRelations {
         $relation = $this->$methodName();
         if ($relation instanceof HasMany) {
             $this->fillHasManyRelation($relation, $data);
+        } else if ($relation instanceof BelongsTo) {
+            $this->fillBelongsToRelation($relation, $data, $delete, $new);
+        } else {
+            throw new RuntimeException("Could not fill relation {$relationName}");
         }
 
         return $this;
+    }
+
+    protected function fillBelongsToRelation (BelongsTo $relation, $data, bool $delete, bool $new) {
+        $relatedModel = $relation->getModel();
+
+        if ($delete) {
+            $instance = null;
+        } else if ($new) {
+            $instance = $relatedModel::create($data);
+        } else if ($data instanceof Model) {
+            $instance = $data;
+        } else {
+            $instance = $relation->getResults();
+            $instance->fill($data);
+            $instance->save();
+        }
+
+        $relation->associate($instance);
     }
 
     protected function fillHasManyRelation (HasMany $relation, array $data) {
