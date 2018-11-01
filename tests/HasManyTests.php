@@ -2,6 +2,7 @@
 
 namespace SyncsRelations\Tests;
 
+use Illuminate\Support\Facades\DB;
 use SyncsRelations\Tests\Models\Vehicle;
 use SyncsRelations\Tests\Models\Wheel;
 
@@ -19,8 +20,30 @@ class HasManyTests extends TestCase
         $vehicle->fill([
             'wheels' => array_map(function ($wheel) { return $wheel->id; }, $wheels)
         ]);
+        $vehicle->save();
+        
         $vehicle = $vehicle->fresh();
         $this->assertCount(3, $vehicle->wheels);
+    }
+
+    public function testVehicleAttachWheelsByIdNoSave() {
+        $wheels = [
+            Wheel::create([ 'size' => 1 ]),
+            Wheel::create([ 'size' => 2 ]),
+            Wheel::create([ 'size' => 3 ])
+        ];
+        $vehicle = Vehicle::create([
+            'name' => 'Car'
+        ]);
+
+        $vehicle->fill([
+            'wheels' => array_pluck($wheels, 'id')
+        ]);
+
+        $this->assertInstanceOf(Wheel::class, $vehicle->wheels[0]);
+        $this->assertCount(3, $vehicle->wheels);
+        $vehicle = $vehicle->fresh();
+        $this->assertCount(0, $vehicle->wheels);
     }
 
     public function testVehicleDetachWheelsById() {
@@ -32,7 +55,7 @@ class HasManyTests extends TestCase
         $vehicle = Vehicle::create([
             'name' => 'Car'
         ]);
-        $vehicle->wheels->add($wheels);
+        $vehicle->wheels()->saveMany($wheels);
         $vehicle->save();
 
         $vehicle->fill([
@@ -40,9 +63,35 @@ class HasManyTests extends TestCase
                 $wheels[1]->id
             ]
         ]);
+        $vehicle->save();
+
         $vehicle = $vehicle->fresh();
         $this->assertCount(1, $vehicle->wheels);
         $this->assertEquals(2, $vehicle->wheels[0]->size);
+    }
+
+    public function testVehicleDetachWheelsByIdNoSave() {
+        $wheels = [
+            Wheel::create([ 'size' => 1 ]),
+            Wheel::create([ 'size' => 2 ]),
+            Wheel::create([ 'size' => 3 ])
+        ];
+        $vehicle = Vehicle::create([
+            'name' => 'Car',
+            'wheels' => $wheels
+        ]);
+
+        $vehicle->save();
+        $vehicle = $vehicle->fresh();
+
+        $vehicle->fill([
+            'wheels' => [
+                $wheels[1]->id
+            ]
+        ]);
+        $this->assertCount(1, $vehicle->wheels);
+        $vehicle = $vehicle->fresh();
+        $this->assertCount(3, $vehicle->wheels);
     }
 
     public function testVehicleAttachWheelsByModel() {
@@ -52,13 +101,29 @@ class HasManyTests extends TestCase
             Wheel::create([ 'size' => 3 ])
         ];
         $vehicle = Vehicle::create([
+            'name' => 'Car',
+            'wheels' => $wheels
+        ]);
+        $vehicle = $vehicle->fresh();
+        $this->assertCount(3, $vehicle->wheels);
+    }
+
+    public function testVehicleAttachWheelsByModelNoSave() {
+        $wheels = [
+            new Wheel([ 'size' => 1 ]),
+            new Wheel([ 'size' => 2 ]),
+            new Wheel([ 'size' => 3 ])
+        ];
+        $vehicle = Vehicle::create([
             'name' => 'Car'
         ]);
         $vehicle->fill([
             'wheels' => $wheels
         ]);
-        $vehicle = $vehicle->fresh();
+
         $this->assertCount(3, $vehicle->wheels);
+        $vehicle = $vehicle->fresh();
+        $this->assertCount(0, $vehicle->wheels);
     }
 
     public function testVehicleDetachWheelsByModel() {
@@ -68,19 +133,40 @@ class HasManyTests extends TestCase
             Wheel::create([ 'size' => 3 ])
         ];
         $vehicle = Vehicle::create([
-            'name' => 'Car'
+            'name' => 'Car',
+            'wheels' => $wheels
         ]);
-        $vehicle->wheels->add($wheels);
-        $vehicle->save();
 
         $vehicle->fill([
             'wheels' => [
                 $wheels[1]
             ]
         ]);
+        $vehicle->save();
         $vehicle = $vehicle->fresh();
+
         $this->assertCount(1, $vehicle->wheels);
-        $this->assertEquals(2, $vehicle->wheels[0]->size);
+    }
+
+    public function testVehicleDetachWheelsByModelNoSave() {
+        $wheels = [
+            Wheel::create([ 'size' => 1 ]),
+            Wheel::create([ 'size' => 2 ]),
+            Wheel::create([ 'size' => 3 ])
+        ];
+        $vehicle = Vehicle::create([
+            'name' => 'Car',
+            'wheels' => $wheels
+        ]);
+
+        $vehicle->fill([
+            'wheels' => [
+                $wheels[1]
+            ]
+        ]);
+        $this->assertCount(1, $vehicle->wheels);
+        $vehicle = $vehicle->fresh();
+        $this->assertCount(3, $vehicle->wheels);
     }
 
     public function testVehicleCreateWheels() {
@@ -94,8 +180,33 @@ class HasManyTests extends TestCase
                 'new3' => ['size' => 3]
             ]
         ]);
+        $vehicle->save();
         $vehicle = $vehicle->fresh();
+
         $this->assertCount(3, $vehicle->wheels);
+        $this->assertEquals($vehicle->wheels[0]->size, 1);
+        $this->assertEquals($vehicle->wheels[1]->size, 2);
+        $this->assertEquals($vehicle->wheels[2]->size, 3);
+    }
+
+    public function testVehicleCreateWheelsNoSave() {
+        $vehicle = Vehicle::create([
+            'name' => 'Car'
+        ]);
+        $vehicle->fill([
+            'wheels' => [
+                'new1' => ['size' => 1],
+                'new2' => ['size' => 2],
+                'new3' => ['size' => 3]
+            ]
+        ]);
+        $this->assertCount(3, $vehicle->wheels);
+        $this->assertEquals($vehicle->wheels[0]->size, 1);
+        $this->assertEquals($vehicle->wheels[1]->size, 2);
+        $this->assertEquals($vehicle->wheels[2]->size, 3);
+
+        $vehicle = $vehicle->fresh();
+        $this->assertCount(0, $vehicle->wheels);
     }
 
     public function testVehicleUpdateWheels() {
@@ -107,7 +218,7 @@ class HasManyTests extends TestCase
         $vehicle = Vehicle::create([
             'name' => 'Car'
         ]);
-        $vehicle->wheels->add($wheels);
+        $vehicle->wheels()->saveMany($wheels);
         $vehicle->save();
 
         $vehicle->fill([
@@ -117,11 +228,46 @@ class HasManyTests extends TestCase
                 $wheels[2]->id => [ 'size' => 6 ]
             ]
         ]);
+
+        $vehicle->save();
         $vehicle = $vehicle->fresh();
+
         $this->assertCount(3, $vehicle->wheels);
         $this->assertEquals(4, $vehicle->wheels[0]->size);
         $this->assertEquals(5, $vehicle->wheels[1]->size);
         $this->assertEquals(6, $vehicle->wheels[2]->size);
+    }
+
+    public function testVehicleUpdateWheelsNoSave() {
+        $wheels = [
+            Wheel::create([ 'size' => 1 ]),
+            Wheel::create([ 'size' => 2 ]),
+            Wheel::create([ 'size' => 3 ])
+        ];
+        $vehicle = Vehicle::create([
+            'name' => 'Car'
+        ]);
+        $vehicle->wheels()->saveMany($wheels);
+
+        $vehicle->fill([
+            'wheels' => [
+                $wheels[0]->id => [ 'size' => 4 ],
+                $wheels[1]->id => [ 'size' => 5 ],
+                $wheels[2]->id => [ 'size' => 6 ]
+            ]
+        ]);
+
+        $this->assertCount(3, $vehicle->wheels);
+        $this->assertEquals(4, $vehicle->wheels[0]->size);
+        $this->assertEquals(5, $vehicle->wheels[1]->size);
+        $this->assertEquals(6, $vehicle->wheels[2]->size);
+
+        $vehicle = $vehicle->fresh();
+
+        $this->assertCount(3, $vehicle->wheels);
+        $this->assertEquals(1, $vehicle->wheels[0]->size);
+        $this->assertEquals(2, $vehicle->wheels[1]->size);
+        $this->assertEquals(3, $vehicle->wheels[2]->size);
     }
 
     public function testVehicleAddUpdateDetachWheels() {
@@ -133,7 +279,36 @@ class HasManyTests extends TestCase
         $vehicle = Vehicle::create([
             'name' => 'Car'
         ]);
-        $vehicle->wheels->add($wheels);
+        $vehicle->wheels()->saveMany($wheels);
+        $vehicle->save();
+
+        $vehicle->fill([
+            'wheels' => [
+                'new' => [ 'size' => 4 ],
+                $wheels[1]->id => [ 'size' => 5 ]
+            ]
+        ]);
+        $vehicle->save();
+
+        $vehicle = $vehicle->fresh();
+        $this->assertCount(2, $vehicle->wheels);
+
+        // Note that the order is (of course) wrong, because we can't insert
+        // a new instance before an existing instance
+        $this->assertEquals(5, $vehicle->wheels[0]->size);
+        $this->assertEquals(4, $vehicle->wheels[1]->size);
+    }
+
+    public function testVehicleAddUpdateDetachWheelsNoSave() {
+        $wheels = [
+            Wheel::create([ 'size' => 1 ]),
+            Wheel::create([ 'size' => 2 ]),
+            Wheel::create([ 'size' => 3 ])
+        ];
+        $vehicle = Vehicle::create([
+            'name' => 'Car'
+        ]);
+        $vehicle->wheels()->saveMany($wheels);
         $vehicle->save();
 
         $vehicle->fill([
@@ -143,11 +318,11 @@ class HasManyTests extends TestCase
             ]
         ]);
         $vehicle = $vehicle->fresh();
-        $this->assertCount(2, $vehicle->wheels);
 
-        // Note that the order is (of course) wrong, because we can't insert
-        // a new instance before an existing instance
-        $this->assertEquals(5, $vehicle->wheels[0]->size);
-        $this->assertEquals(4, $vehicle->wheels[1]->size);
+        $this->assertCount(3, $vehicle->wheels);
+
+        $this->assertEquals($vehicle->wheels[0]->size, 1);
+        $this->assertEquals($vehicle->wheels[1]->size, 2);
+        $this->assertEquals($vehicle->wheels[2]->size, 3);
     }
 }

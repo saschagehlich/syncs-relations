@@ -33,7 +33,9 @@ class BelongsToManyTests extends TestCase
         $manufacturer = Manufacturer::create([
             'name' => 'Sash Cars'
         ]);
-        $manufacturer->vehicles->add($vehicles);
+        foreach ($vehicles as $vehicle) {
+            $manufacturer->vehicles->add($vehicle);
+        }
         $manufacturer->save();
 
         $manufacturer->fill([

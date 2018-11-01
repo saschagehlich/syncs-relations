@@ -11,6 +11,8 @@ use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
+use SyncsRelations\Tests\Models\Vehicle;
+use SyncsRelations\Tests\Models\Wheel;
 
 /**
  * This trait enables models to be filled with nested relationship data.
@@ -74,6 +76,7 @@ use RuntimeException;
  */
 trait SyncsRelations {
     // protected $syncedRelations = [];
+    protected $relationshipAttributes = [];
     protected $relationshipData = [];
 
     /**
@@ -114,15 +117,17 @@ trait SyncsRelations {
 
     public function save(array $options = [])
     {
+        $this->removeTemporaryAttributes();
+        $self = parent::save($options);
+
         $syncedRelations = $this->getSyncedRelations();
         foreach ($syncedRelations as $relationName) {
-            if (!array_key_exists($relationName, $this->relationshipData)) continue;
+            if (!array_key_exists($relationName, $this->relationshipAttributes)) continue;
             $this->saveRelation($relationName);
         }
 
-        return parent::save($options);
+        return $self;
     }
-
 
     /**
      * Fill the given relation with the given data
@@ -140,7 +145,7 @@ trait SyncsRelations {
         /** @var Relation $relation */
         $relation = $this->$methodName();
         if ($relation instanceof HasMany || $relation instanceof BelongsToMany) {
-            $this->fillManyRelation($relation, $data);
+            $this->fillManyRelation($relationName, $relation, $data);
         } else if ($relation instanceof BelongsTo) {
             $this->fillBelongsToRelation($relationName, $relation, $data, $delete, $new);
         } else if ($relation instanceof HasOne) {
@@ -159,7 +164,7 @@ trait SyncsRelations {
         /** @var Relation $relation */
         $relation = $this->$methodName();
         if ($relation instanceof HasMany || $relation instanceof BelongsToMany) {
-            $this->saveManyRelation($relation);
+            $this->saveManyRelation($relationName, $relation);
         } else if ($relation instanceof BelongsTo) {
             $this->saveBelongsToRelation($relationName, $relation);
         } else if ($relation instanceof HasOne) {
@@ -168,7 +173,6 @@ trait SyncsRelations {
 
         return $this;
     }
-
 
     protected function fillBelongsToRelation (string $relationName, BelongsTo $relation, $data, bool $delete, bool $new) {
         $relatedModel = $relation->getModel();
@@ -187,23 +191,19 @@ trait SyncsRelations {
         // This is set temporarily so that we can access the related instance
         // even though it is not saved yet.
         $this->$relationName = $instance;
-        $this->relationshipData[$relationName] = $instance;
+        $this->relationshipAttributes[$relationName] = $instance;
     }
 
     protected function saveBelongsToRelation (string $relationName, BelongsTo $relation) {
-        // Modify attributes so that the temporarily set (see `fillBelongsToRelation`)
-        // attribute is no longer there and is Eloquent does not try to write it
-        // to the database.
-        $attributes = $this->getAttributes();
-        unset($attributes[$relationName]);
-        $this->setRawAttributes($attributes);
+        $this->removeAttribute($relationName);
 
         /** @var Model $model */
-        $model = $this->relationshipData[$relationName];
+        $model = $this->relationshipAttributes[$relationName];
         if ($model != null) {
             $model->save();
         }
         $relation->associate($model);
+        parent::save();
     }
 
     protected function fillHasOneRelation (HasOne $relation, $data, bool $delete, bool $new) {
@@ -229,54 +229,81 @@ trait SyncsRelations {
      * @param HasMany|BelongsToMany $relation
      * @param array $data
      */
-    protected function fillManyRelation ($relation, array $data) {
+    protected function fillManyRelation (string $relationName, $relation, array $data) {
+        $changes = [];
+
         $children = $relation->getResults();
         $relatedModel = $relation->getModel();
-        $childIds = $children->map(function ($child) { return $child->id; })->toArray();
-        $dataContainsArrays = count(array_filter($data, 'is_array')) == count($data);
-        $dataContainsInstances = false;
-        if (!$dataContainsArrays && count($data) > 0) {
-            $dataContainsInstances = $data[0] instanceof Model;
-        }
 
-        if (!$dataContainsArrays) {
-            $ids = $data;
-        } else {
-            $ids = array_keys($data);
-        }
+        $existingChildIds = $children->map(function ($child) { return $child->id; })->toArray();
+        $dataContainsArrays = count(array_filter($data, 'is_array')) == count($data);
+        $dataContainsInstances = !$dataContainsArrays && count($data) > 0 && $data[0] instanceof Model;
 
         if ($dataContainsInstances) {
-            $ids = array_pluck($data, 'id');
-        }
-
-        $detachedIds = array_diff($childIds, $ids);
-        foreach ($detachedIds as $id) {
-            $children->where('id', $id)->first()->delete();
-        }
-
-        if (!$dataContainsArrays) {
-            $attachedIds = array_diff($ids, $childIds);
-            foreach ($attachedIds as $index => $id) {
-                if ($dataContainsInstances) {
-                    $instance = array_first($data, function ($instance) use ($id) {
-                        return $instance->id == $id;
-                    });
-                } else {
-                    $instance = $relatedModel->where('id', $id)->first();
-                }
-                $relation->save($instance);
+            $newChildIds = array_pluck($data, 'id');
+            $newChildren = $data;
+        } else if ($dataContainsArrays) {
+            $newChildIds = [];
+            $newChildren = [];
+            foreach ($data as $id => $childData) {
+                $child = $relatedModel::find($id) ?: new $relatedModel;
+                $child->fill($childData);
+                $newChildIds[] = $id;
+                $newChildren[] = $child;
             }
         } else {
-            foreach ($data as $id => $childData) {
-                /** @var Model $instance */
-                $instance = $relatedModel::find($id) ?: new $relatedModel;
-                $instance->fill($childData);
+            $newChildIds = $data;
+            $newChildren = $relatedModel::whereIn('id', $newChildIds)->get();
+        }
+
+        $changes['detached'] = array_diff($existingChildIds, $newChildIds);
+        $changes['attached'] = array_diff($newChildIds, $existingChildIds);
+        $changes['possibly_changed'] = array_intersect($newChildIds, $existingChildIds);
+
+        // This is set temporarily so that we can access the related instance
+        // even though it is not saved yet.
+        $this->$relationName = $newChildren;
+        $this->relationshipData[$relationName] = $changes;
+        $this->relationshipAttributes[$relationName] = $newChildren;
+    }
+
+    /**
+     * @param string $relationName
+     * @param HasMany|BelongsToMany $relation
+     */
+    protected function saveManyRelation (string $relationName, $relation) {
+        $relatedModel = $relation->getModel();
+        $instances = $this->$relationName;
+        $data = $this->relationshipData[$relationName];
+
+        if (count($data['detached']) > 0) {
+            $relatedModel::whereIn('id', $data['detached'])->delete();
+        }
+
+        if (count($data['attached']) > 0 || count($data['possibly_changed']) > 0) {
+            $collection = $this->relationshipAttributes[$relationName];
+            foreach ($collection as $instance) {
+                $instance->save();
                 $relation->save($instance);
             }
+        }
+
+        $this->removeAttribute($relationName);
+    }
+
+    protected function removeTemporaryAttributes () {
+        $syncedRelations = $this->getSyncedRelations();
+        foreach ($syncedRelations as $relationName) {
+            $this->removeAttribute($relationName);
         }
     }
 
-    protected function saveManyRelation ($relation) {
-
+    protected function removeAttribute (string $attribute) {
+        // Modify attributes so that the temporarily set (see `fillBelongsToRelation`)
+        // attribute is no longer there and is Eloquent does not try to write it
+        // to the database.
+        $attributes = $this->getAttributes();
+        unset($attributes[$attribute]);
+        $this->setRawAttributes($attributes);
     }
 }
