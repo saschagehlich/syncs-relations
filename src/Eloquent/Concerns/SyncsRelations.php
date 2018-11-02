@@ -230,20 +230,22 @@ trait SyncsRelations {
      * @param array $data
      */
     protected function fillManyRelation (string $relationName, $relation, array $data) {
-        $changes = [];
+        $changes = [
+            'detached' => [],
+            'attached' => [],
+            'updated' => []
+        ];
 
         $children = $relation->getResults();
         $relatedModel = $relation->getModel();
 
-        $existingChildIds = $children->map(function ($child) { return $child->id; })->toArray();
         $dataContainsArrays = count(array_filter($data, 'is_array')) == count($data);
         $dataContainsInstances = !$dataContainsArrays && count($data) > 0 && $data[0] instanceof Model;
 
+        /** @var Collection $newChildren */
         if ($dataContainsInstances) {
-            $newChildIds = array_pluck($data, 'id');
-            $newChildren = $data;
+            $newChildren = collect($data);
         } else if ($dataContainsArrays) {
-            $newChildIds = [];
             $newChildren = [];
             foreach ($data as $id => $childData) {
                 $child = $relatedModel::find($id) ?: new $relatedModel;
@@ -251,14 +253,25 @@ trait SyncsRelations {
                 $newChildIds[] = $id;
                 $newChildren[] = $child;
             }
+            $newChildren = collect($newChildren);
         } else {
             $newChildIds = $data;
             $newChildren = $relatedModel::whereIn('id', $newChildIds)->get();
         }
 
-        $changes['detached'] = array_diff($existingChildIds, $newChildIds);
-        $changes['attached'] = array_diff($newChildIds, $existingChildIds);
-        $changes['possibly_changed'] = array_intersect($newChildIds, $existingChildIds);
+        foreach ($children as $child) {
+            if (!$newChildren->contains('id', null, $child->id)) {
+                $changes['detached'][] = $child;
+            } else {
+                $changes['updated'][] = $newChildren->firstWhere('id', $child->id);
+            }
+        }
+
+        foreach ($newChildren as $child) {
+            if (!$children->contains('id', null, $child->id)) {
+                $changes['attached'][] = $child;
+            }
+        }
 
         // This is set temporarily so that we can access the related instance
         // even though it is not saved yet.
@@ -273,19 +286,27 @@ trait SyncsRelations {
      */
     protected function saveManyRelation (string $relationName, $relation) {
         $relatedModel = $relation->getModel();
-        $instances = $this->$relationName;
         $data = $this->relationshipData[$relationName];
 
-        if (count($data['detached']) > 0) {
-            $relatedModel::whereIn('id', $data['detached'])->delete();
+        foreach ($data['detached'] as $model) {
+            if ($relation instanceof BelongsToMany) {
+                $relation->detach($model->id);
+            } else {
+                $model->delete();
+            }
         }
 
-        if (count($data['attached']) > 0 || count($data['possibly_changed']) > 0) {
-            $collection = $this->relationshipAttributes[$relationName];
-            foreach ($collection as $instance) {
-                $instance->save();
-                $relation->save($instance);
+        foreach ($data['attached'] as $model) {
+            if ($relation instanceof BelongsToMany) {
+                $relation->save($model);
+            } else {
+                $relation->save($model);
             }
+        }
+
+        foreach ($data['updated'] as $model) {
+            /** @var Model $model */
+            $model->save();
         }
 
         $this->removeAttribute($relationName);
