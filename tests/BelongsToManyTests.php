@@ -277,8 +277,8 @@ class BelongsToManyTests extends TestCase
         $manufacturer = $manufacturer->fresh();
         $this->assertCount(2, $manufacturer->vehicles);
 
-        $this->assertEquals('Car 4', $manufacturer->vehicles[0]->name);
-        $this->assertEquals('Car 5', $manufacturer->vehicles[1]->name);
+        $this->assertEquals('Car 5', $manufacturer->vehicles[0]->name);
+        $this->assertEquals('Car 4', $manufacturer->vehicles[1]->name);
     }
 
     public function testManufacturerAddUpdateDetachVehiclesNoSave() {

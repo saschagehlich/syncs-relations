@@ -285,7 +285,6 @@ trait SyncsRelations {
      * @param HasMany|BelongsToMany $relation
      */
     protected function saveManyRelation (string $relationName, $relation) {
-        $relatedModel = $relation->getModel();
         $data = $this->relationshipData[$relationName];
 
         foreach ($data['detached'] as $model) {
@@ -295,17 +294,11 @@ trait SyncsRelations {
                 $model->delete();
             }
         }
-
         foreach ($data['attached'] as $model) {
-            if ($relation instanceof BelongsToMany) {
-                $relation->save($model);
-            } else {
-                $relation->save($model);
-            }
+            $relation->save($model);
         }
 
         foreach ($data['updated'] as $model) {
-            /** @var Model $model */
             $model->save();
         }
 
