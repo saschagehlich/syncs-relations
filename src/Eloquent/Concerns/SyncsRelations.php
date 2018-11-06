@@ -15,62 +15,6 @@ use SyncsRelations\Tests\Models\Vehicle;
 use SyncsRelations\Tests\Models\Wheel;
 
 /**
- * This trait enables models to be filled with nested relationship data.
- * Usage:
- *      class Cart extends Model {
- *          use SyncsRelations;
- *          protected $synced_relations = ['products'];
- *
- *          public function products() {
- *              return $this->hasMany(Product::class);
- *          }
- *      }
- *
- * A `Cart` instance can now be filled with one or multiple products.
- *
- * Example 1: Create relation to existing `Product` instances, referenced by their ID
- *      $cart = new Cart([
- *          'products' => [
- *              Product::first()->id
- *          ]
- *      ]);
- *
- * Example 2: Create relation to new `Product` instance using a named array
- *      $cart = new Cart([
- *          'products' => [
- *              'new123' => ['name' => 'Product Name']
- *          ]
- *      ]);
- *
- * Example 3: Update data for existing related `Product` instance
- *      $cart = new Cart([
- *          'products' => [
- *              '3' => ['name' => 'Updated Product Name']
- *          ]
- *      ]);
- *
- * Example 4: Combine examples 2 and 3, this will result in a new product instance as well
- *            as a reference to an existing product instance
- *      $cart = new Cart([
- *          'products' => [
- *              'new123' => ['name' => 'New Product Name'],
- *              '3' => ['name' => 'Updated Product Name']
- *          ]
- *      ]);
- *
- * A couple of things to note:
- *
- *      * When given an indexed array, the array should include IDs of existing entries
- *        in the related table.
- *      * When given a named array, if the key is the ID of an existing entry in
- *        the related table, the trait will fill the entry with the associated values.
- *
- * Relationships are not only filled, but synced, meaning that:
- *
- *      * IDs that do not exist in the database will result in new instances of the related model
- *      * If there are existing related instances but they're not present in the passed data,
- *        they will be removed from the database.
- *
  * @mixin Model
  * @property string[] $synced_relations
  */
@@ -99,6 +43,8 @@ trait SyncsRelations {
 
         $syncedRelations = $this->getSyncedRelations();
         foreach ($syncedRelations as $relationName) {
+            $present = array_key_exists($relationName, $attributes) ||
+                array_key_exists('new_' . $relationName, $attributes);
             $data = array_pull($attributes, $relationName);
             $delete = array_pull($attributes, 'delete_' . $relationName);
             $new = array_pull($attributes, 'new_' . $relationName);
@@ -107,7 +53,7 @@ trait SyncsRelations {
                 $data = $new;
             }
 
-            if ($data || $delete) {
+            if ($present || $delete) {
                 $this->fillRelation($relationName, $data, !!$delete, !!$new);
             }
         }
@@ -149,7 +95,7 @@ trait SyncsRelations {
         } else if ($relation instanceof BelongsTo) {
             $this->fillBelongsToRelation($relationName, $relation, $data, $delete, $new);
         } else if ($relation instanceof HasOne) {
-            $this->fillHasOneRelation($relation, $data, $delete, $new);
+            $this->fillHasOneRelation($relationName, $relation, $data, $new);
         } else {
             throw new RuntimeException("Could not fill relation {$relationName}");
         }
@@ -168,7 +114,7 @@ trait SyncsRelations {
         } else if ($relation instanceof BelongsTo) {
             $this->saveBelongsToRelation($relationName, $relation);
         } else if ($relation instanceof HasOne) {
-            $this->saveHasOneRelation($relation);
+            $this->saveHasOneRelation($relationName, $relation);
         }
 
         return $this;
@@ -206,23 +152,35 @@ trait SyncsRelations {
         parent::save();
     }
 
-    protected function fillHasOneRelation (HasOne $relation, $data, bool $delete, bool $new) {
+    protected function fillHasOneRelation (string $relationName, HasOne $relation, $data, bool $new) {
         $relatedModel = $relation->getRelated();
-        if ($delete) {
-            $relation->delete();
+
+        if ($data == null) {
+            $instance = null;
         } else if ($new) {
-            $instance = $relatedModel::create($data);
-            $instance->setAttribute($relation->getForeignKeyName(), $relation->getParentKey());
+            $instance = new $relatedModel($data);
         } else if ($data instanceof Model) {
-            $data->setAttribute($relation->getForeignKeyName(), $relation->getParentKey());
+            $instance = $data;
         } else {
             $instance = $relation->getResults();
             $instance->fill($data);
         }
+
+        $this->$relationName = $instance;
+        $this->relationshipAttributes[$relationName] = $instance;
     }
 
-    protected function saveHasOneRelation (HasOne $relation) {
+    protected function saveHasOneRelation (string $relationName, HasOne $relation) {
+        $this->removeAttribute($relationName);
 
+        /** @var Model $model */
+        $model = $this->relationshipAttributes[$relationName];
+        if ($model != null) {
+            $model->save();
+            $relation->save($model);
+        } else {
+            $relation->delete();
+        }
     }
 
     /**
