@@ -20,7 +20,18 @@ use SyncsRelations\Tests\Models\Wheel;
  */
 trait SyncsRelations {
     // protected $syncedRelations = [];
+
+    /**
+     * Stores the attribute values that the attributes will have after saving
+     * @var array
+     */
     protected $relationshipAttributes = [];
+
+    /**
+     * Stores additional data for the relationship that need to persist between
+     * filling and saving of the model
+     * @var array
+     */
     protected $relationshipData = [];
 
     /**
@@ -61,6 +72,12 @@ trait SyncsRelations {
         return $this;
     }
 
+    /**
+     * Save the model to the database.
+     *
+     * @param  array  $options
+     * @return bool
+     */
     public function save(array $options = [])
     {
         $this->removeTemporaryAttributes();
@@ -103,6 +120,12 @@ trait SyncsRelations {
         return $this;
     }
 
+    /**
+     * Persist the given relation and its filled data
+     *
+     * @param string $relationName
+     * @return $this
+     */
     protected function saveRelation (string $relationName) {
         $methodName = camel_case($relationName);
         if (!method_exists($this, $methodName)) return $this;
@@ -120,6 +143,16 @@ trait SyncsRelations {
         return $this;
     }
 
+
+    /**
+     * Fill the given BelongsTo relation with the given data
+     *
+     * @param string $relationName
+     * @param BelongsTo $relation
+     * @param $data
+     * @param bool $delete
+     * @param bool $new
+     */
     protected function fillBelongsToRelation (string $relationName, BelongsTo $relation, $data, bool $delete, bool $new) {
         $relatedModel = $relation->getModel();
 
@@ -140,6 +173,12 @@ trait SyncsRelations {
         $this->relationshipAttributes[$relationName] = $instance;
     }
 
+    /**
+     * Persist the given BelongsTo relation with its filled data
+     *
+     * @param string $relationName
+     * @param HasOne $relation
+     */
     protected function saveBelongsToRelation (string $relationName, BelongsTo $relation) {
         $this->removeAttribute($relationName);
 
@@ -152,6 +191,14 @@ trait SyncsRelations {
         parent::save();
     }
 
+    /**
+     * Fill the given HasOne relation with the given data
+     *
+     * @param string $relationName
+     * @param HasOne $relation
+     * @param $data
+     * @param bool $new
+     */
     protected function fillHasOneRelation (string $relationName, HasOne $relation, $data, bool $new) {
         $relatedModel = $relation->getRelated();
 
@@ -170,6 +217,12 @@ trait SyncsRelations {
         $this->relationshipAttributes[$relationName] = $instance;
     }
 
+    /**
+     * Persist the given HasOne relation with its filled data
+     *
+     * @param string $relationName
+     * @param HasOne $relation
+     */
     protected function saveHasOneRelation (string $relationName, HasOne $relation) {
         $this->removeAttribute($relationName);
 
@@ -184,6 +237,9 @@ trait SyncsRelations {
     }
 
     /**
+     * Fill the given HasMany or BelongsToMany relation with the given data
+     *
+     * @param string $relationName
      * @param HasMany|BelongsToMany $relation
      * @param array $data
      */
@@ -239,6 +295,8 @@ trait SyncsRelations {
     }
 
     /**
+     * Persist the given HasMany or BelongsToMany relation with its filled data
+     *
      * @param string $relationName
      * @param HasMany|BelongsToMany $relation
      */
@@ -263,6 +321,9 @@ trait SyncsRelations {
         $this->removeAttribute($relationName);
     }
 
+    /**
+     * Removes all temporary attributes from the model
+     */
     protected function removeTemporaryAttributes () {
         $syncedRelations = $this->getSyncedRelations();
         foreach ($syncedRelations as $relationName) {
@@ -270,6 +331,10 @@ trait SyncsRelations {
         }
     }
 
+    /**
+     * Removes the given (temporary) attribute
+     * @param string $attribute
+     */
     protected function removeAttribute (string $attribute) {
         // Modify attributes so that the temporarily set (see `fillBelongsToRelation`)
         // attribute is no longer there and is Eloquent does not try to write it
