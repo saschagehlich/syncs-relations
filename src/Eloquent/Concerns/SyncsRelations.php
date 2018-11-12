@@ -390,6 +390,13 @@ trait SyncsRelations {
 
     protected function isManyRelationDirty (string $relationName, Relation $relation) {
         $entities = $this->$relationName;
+        if (!array_key_exists($relationName, $this->relationshipData)) return false;
+
+        $changes = $this->relationshipData[$relationName];
+        if (count($changes['attached']) > 0 || count($changes['detached']) > 0) {
+            return true;
+        }
+
         foreach ($entities as $entity) {
             if ($entity->isDirty()) return true;
         }
