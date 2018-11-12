@@ -325,4 +325,57 @@ class HasManyTests extends TestCase
         $this->assertEquals($vehicle->wheels[1]->size, 2);
         $this->assertEquals($vehicle->wheels[2]->size, 3);
     }
+
+    public function testVehicleCheckPositiveDirtiness() {
+        $wheels = [
+            Wheel::create([ 'size' => 1 ]),
+            Wheel::create([ 'size' => 2 ]),
+            Wheel::create([ 'size' => 3 ])
+        ];
+        $vehicle = Vehicle::create([
+            'name' => 'Car'
+        ]);
+        $vehicle->wheels()->saveMany($wheels);
+        $vehicle->save();
+
+        $vehicle->fill([
+            'wheels' => [
+                $wheels[0]->id => [ 'size' => 3 ],
+                $wheels[1]->id => [ 'size' => 2 ],
+                $wheels[2]->id => [ 'size' => 3 ]
+            ]
+        ]);
+
+        $vehicle->syncChanges();
+        $vehicle->syncRelationChanges();
+        $this->assertFalse($vehicle->isDirty());
+        $this->assertTrue($vehicle->areRelationsDirty());
+    }
+
+    public function testVehicleCheckNegativeDirtiness() {
+        $wheels = [
+            Wheel::create([ 'size' => 1 ]),
+            Wheel::create([ 'size' => 2 ]),
+            Wheel::create([ 'size' => 3 ])
+        ];
+        $vehicle = Vehicle::create([
+            'name' => 'Car'
+        ]);
+        $vehicle->wheels()->saveMany($wheels);
+        $vehicle->save();
+        $vehicle = $vehicle->fresh();
+
+        $vehicle->fill([
+            'wheels' => [
+                $wheels[0]->id => [ 'size' => 1 ],
+                $wheels[1]->id => [ 'size' => 2 ],
+                $wheels[2]->id => [ 'size' => 3 ]
+            ]
+        ]);
+
+        $vehicle->syncChanges();
+        $vehicle->syncRelationChanges();
+        $this->assertFalse($vehicle->isDirty());
+        $this->assertFalse($vehicle->areRelationsDirty());
+    }
 }

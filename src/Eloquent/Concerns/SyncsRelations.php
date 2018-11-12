@@ -182,12 +182,12 @@ trait SyncsRelations {
     protected function saveBelongsToRelation (string $relationName, BelongsTo $relation) {
         $this->removeAttribute($relationName);
 
-        /** @var Model $model */
-        $model = $this->relationshipAttributes[$relationName];
-        if ($model != null) {
-            $model->save();
+        /** @var Model $entity */
+        $entity = $this->relationshipAttributes[$relationName];
+        if ($entity != null) {
+            $entity->save();
         }
-        $relation->associate($model);
+        $relation->associate($entity);
         parent::save();
     }
 
@@ -226,11 +226,11 @@ trait SyncsRelations {
     protected function saveHasOneRelation (string $relationName, HasOne $relation) {
         $this->removeAttribute($relationName);
 
-        /** @var Model $model */
-        $model = $this->relationshipAttributes[$relationName];
-        if ($model != null) {
-            $model->save();
-            $relation->save($model);
+        /** @var Model $entity */
+        $entity = $this->relationshipAttributes[$relationName];
+        if ($entity != null) {
+            $entity->save();
+            $relation->save($entity);
         } else {
             $relation->delete();
         }
@@ -303,19 +303,19 @@ trait SyncsRelations {
     protected function saveManyRelation (string $relationName, $relation) {
         $data = $this->relationshipData[$relationName];
 
-        foreach ($data['detached'] as $model) {
+        foreach ($data['detached'] as $entity) {
             if ($relation instanceof BelongsToMany) {
-                $relation->detach($model->id);
+                $relation->detach($entity->id);
             } else {
-                $model->delete();
+                $entity->delete();
             }
         }
-        foreach ($data['attached'] as $model) {
-            $relation->save($model);
+        foreach ($data['attached'] as $entity) {
+            $relation->save($entity);
         }
 
-        foreach ($data['updated'] as $model) {
-            $model->save();
+        foreach ($data['updated'] as $entity) {
+            $entity->save();
         }
 
         $this->removeAttribute($relationName);
@@ -342,5 +342,98 @@ trait SyncsRelations {
         $attributes = $this->getAttributes();
         unset($attributes[$attribute]);
         $this->setRawAttributes($attributes);
+    }
+
+    /**
+     * Determine if the model or given attribute(s) have been modified.
+     *
+     * @param  array|string|null  $attributes
+     * @return bool
+     */
+    public function isDirty($attributes = null)
+    {
+        if ($attributes != null) {
+            return parent::isDirty($attributes);
+        }
+
+        $syncedRelations = $this->getSyncedRelations();
+        $attributes = array_keys(array_except($this->getAttributes(), $syncedRelations));
+        return parent::isDirty($attributes);
+    }
+
+    public function areRelationsDirty()
+    {
+        $syncedRelations = $this->getSyncedRelations();
+
+        foreach ($syncedRelations as $relationName) {
+            $relationDirty = $this->isRelationDirty($relationName);
+            if ($relationDirty) return $relationDirty;
+        }
+
+        return false;
+    }
+
+    protected function isRelationDirty (string $relationName) {
+        $methodName = camel_case($relationName);
+        if (!method_exists($this, $methodName)) return false;
+
+        /** @var Relation $relation */
+        $relation = $this->$methodName();
+        if ($relation instanceof HasMany || $relation instanceof BelongsToMany) {
+            return $this->isManyRelationDirty($relationName, $relation);
+        } else if ($relation instanceof BelongsTo || $relation instanceof HasOne) {
+            return $this->isSingleRelationDirty($relationName, $relation);
+        } else {
+            throw new RuntimeException("Could not check dirtiness for relation {$relationName}");
+        }
+    }
+
+    protected function isManyRelationDirty (string $relationName, Relation $relation) {
+        $entities = $this->$relationName;
+        foreach ($entities as $entity) {
+            if ($entity->isDirty()) return true;
+        }
+        return false;
+    }
+
+    protected function isSingleRelationDirty (string $relationName, Relation $relation) {
+        $entity = $relation->getResults();
+        if ($entity == null) return $this->getOriginal($relationName) != null;
+        return $entity->isDirty();
+    }
+
+    public function syncRelationChanges () {
+        $syncedRelations = $this->getSyncedRelations();
+
+        foreach ($syncedRelations as $relationName) {
+            $methodName = camel_case($relationName);
+            if (!method_exists($this, $methodName)) continue;
+
+            /** @var Relation $relation */
+            $relation = $this->$methodName();
+
+            if ($relation instanceof HasMany || $relation instanceof BelongsToMany) {
+                $this->syncManyRelationChanges($relationName, $relation);
+            } else if ($relation instanceof BelongsTo || $relation instanceof HasOne) {
+                $this->syncSingleRelationChanges($relationName, $relation);
+            } else {
+                throw new RuntimeException("Could not sync changes for relation {$relationName}");
+            }
+        }
+
+        return false;
+    }
+
+    protected function syncManyRelationChanges (string $relationName, Relation $relation) {
+        $entities = $this->$relationName;
+        foreach ($entities as $entity) {
+            $entity->syncChanges();
+        }
+    }
+
+    protected function syncSingleRelationChanges (string $relationName, Relation $relation) {
+        $entity = $this->$relationName;
+        if ($entity == null) return;
+        $entity->syncChanges();
     }
 }
