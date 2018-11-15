@@ -50,8 +50,6 @@ trait SyncsRelations {
      * @throws \Illuminate\Database\Eloquent\MassAssignmentException
      */
     public function fill(array $attributes) {
-        parent::fill($attributes);
-
         $syncedRelations = $this->getSyncedRelations();
         foreach ($syncedRelations as $relationName) {
             $present = array_key_exists($relationName, $attributes) ||
@@ -68,6 +66,8 @@ trait SyncsRelations {
                 $this->fillRelation($relationName, $delete ?: $data, !!$delete, !!$new);
             }
         }
+
+        parent::fill($attributes);
 
         return $this;
     }
