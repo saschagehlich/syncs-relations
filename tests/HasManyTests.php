@@ -21,7 +21,7 @@ class HasManyTests extends TestCase
             'wheels' => array_map(function ($wheel) { return $wheel->id; }, $wheels)
         ]);
         $vehicle->save();
-        
+
         $vehicle = $vehicle->fresh();
         $this->assertCount(3, $vehicle->wheels);
     }
@@ -68,6 +68,31 @@ class HasManyTests extends TestCase
         $vehicle = $vehicle->fresh();
         $this->assertCount(1, $vehicle->wheels);
         $this->assertEquals(2, $vehicle->wheels[0]->size);
+    }
+
+    public function testVehicleDetachWheelsByIdSeparateObject() {
+        $wheels = [
+            Wheel::create([ 'size' => 1 ]),
+            Wheel::create([ 'size' => 2 ]),
+            Wheel::create([ 'size' => 3 ])
+        ];
+        $vehicle = Vehicle::create([
+            'name' => 'Car'
+        ]);
+        $vehicle->wheels()->saveMany($wheels);
+        $vehicle->save();
+
+        $vehicle->fill([
+            'delete_wheels' => [
+                $wheels[1]->id
+            ]
+        ]);
+        $vehicle->save();
+
+        $vehicle = $vehicle->fresh();
+        $this->assertCount(2, $vehicle->wheels);
+        $this->assertEquals(1, $vehicle->wheels[0]->size);
+        $this->assertEquals(3, $vehicle->wheels[1]->size);
     }
 
     public function testVehicleDetachWheelsByIdNoSave() {

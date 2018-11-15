@@ -65,7 +65,7 @@ trait SyncsRelations {
             }
 
             if ($present || $delete) {
-                $this->fillRelation($relationName, $data, !!$delete, !!$new);
+                $this->fillRelation($relationName, $delete ?: $data, !!$delete, !!$new);
             }
         }
 
@@ -108,7 +108,7 @@ trait SyncsRelations {
         /** @var Relation $relation */
         $relation = $this->$methodName();
         if ($relation instanceof HasMany || $relation instanceof BelongsToMany) {
-            $this->fillManyRelation($relationName, $relation, $data);
+            $this->fillManyRelation($relationName, $relation, $data, $delete);
         } else if ($relation instanceof BelongsTo) {
             $this->fillBelongsToRelation($relationName, $relation, $data, $delete, $new);
         } else if ($relation instanceof HasOne) {
@@ -242,8 +242,10 @@ trait SyncsRelations {
      * @param string $relationName
      * @param HasMany|BelongsToMany $relation
      * @param array $data
+     * @param boolean $delete
      */
-    protected function fillManyRelation (string $relationName, $relation, array $data) {
+    protected function fillManyRelation (string $relationName, $relation, array $data, bool $delete) {
+        // TODO: This is a pretty long method - we need to refactor this
         $changes = [
             'detached' => [],
             'attached' => [],
@@ -256,34 +258,48 @@ trait SyncsRelations {
         $dataContainsArrays = count(array_filter($data, 'is_array')) == count($data);
         $dataContainsInstances = !$dataContainsArrays && count($data) > 0 && $data[0] instanceof Model;
 
-        /** @var Collection $newChildren */
-        if ($dataContainsInstances) {
-            $newChildren = collect($data);
-        } else if ($dataContainsArrays) {
-            $newChildren = [];
-            foreach ($data as $id => $childData) {
-                $child = $relatedModel::find($id) ?: new $relatedModel;
-                $child->fill($childData);
-                $newChildIds[] = $id;
-                $newChildren[] = $child;
+        if ($delete) {
+            if ($dataContainsInstances) {
+                $deletedChildren = $data;
+            } else if (!$dataContainsArrays) {
+                $deletedChildren = $relatedModel::whereIn('id', $data)->get();
             }
-            $newChildren = collect($newChildren);
-        } else {
-            $newChildIds = $data;
-            $newChildren = $relatedModel::whereIn('id', $newChildIds)->get();
-        }
 
-        foreach ($children as $child) {
-            if (!$newChildren->contains('id', null, $child->id)) {
+            foreach ($deletedChildren as $child) {
                 $changes['detached'][] = $child;
-            } else {
-                $changes['updated'][] = $newChildren->firstWhere('id', $child->id);
             }
-        }
+            $deletedIds = array_pluck($deletedChildren, 'id');
+            $newChildren = $relatedModel::whereNotIn('id', $deletedIds)->get();
+        } else {
+            /** @var Collection $newChildren */
+            if ($dataContainsInstances) {
+                $newChildren = collect($data);
+            } else if ($dataContainsArrays) {
+                $newChildren = [];
+                foreach ($data as $id => $childData) {
+                    $child = $relatedModel::find($id) ?: new $relatedModel;
+                    $child->fill($childData);
+                    $newChildIds[] = $id;
+                    $newChildren[] = $child;
+                }
+                $newChildren = collect($newChildren);
+            } else {
+                $newChildIds = $data;
+                $newChildren = $relatedModel::whereIn('id', $newChildIds)->get();
+            }
 
-        foreach ($newChildren as $child) {
-            if (!$children->contains('id', null, $child->id)) {
-                $changes['attached'][] = $child;
+            foreach ($children as $child) {
+                if (!$newChildren->contains('id', null, $child->id)) {
+                    $changes['detached'][] = $child;
+                } else {
+                    $changes['updated'][] = $newChildren->firstWhere('id', $child->id);
+                }
+            }
+
+            foreach ($newChildren as $child) {
+                if (!$children->contains('id', null, $child->id)) {
+                    $changes['attached'][] = $child;
+                }
             }
         }
 
