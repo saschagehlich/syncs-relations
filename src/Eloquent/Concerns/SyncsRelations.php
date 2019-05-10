@@ -277,7 +277,13 @@ trait SyncsRelations {
             } else if ($dataContainsArrays) {
                 $newChildren = [];
                 foreach ($data as $id => $childData) {
-                    $child = $relatedModel::find($id) ?: new $relatedModel;
+                    $instanceExists = substr($id, 0, 3) !== 'new';
+                    if (!$instanceExists) {
+                        $child = new $relatedModel;
+                    } else {
+                        $child = $relatedModel::find($id) ?: new $relatedModel;
+                    }
+
                     $child->fill($childData);
                     $newChildIds[] = $id;
                     $newChildren[] = $child;
