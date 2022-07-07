@@ -3,7 +3,7 @@
     "description": "Provides a SyncsRelations trait to Eloquent models",
     "type": "library",
     "require": {
-        "php": "^7.0",
+        "php": "^7.0|^8.0",
         "illuminate/database": "^6.0"
     },
     "require-dev": {
