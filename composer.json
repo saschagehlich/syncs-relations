@@ -1,35 +1,35 @@
 {
-    "name": "saschagehlich/syncs-relations",
-    "description": "Provides a SyncsRelations trait to Eloquent models",
-    "type": "library",
-    "require": {
-        "php": "^7.0|^8.0",
-        "illuminate/database": "^6.0|^7.0|^8.0|^9.0"
-    },
-    "require-dev": {
-        "phpunit/phpunit": "^7.4",
-        "orchestra/database": "^3.6",
-        "orchestra/testbench": "^3.6",
-        "mockery/mockery": "^1.2"
-    },
-    "autoload": {
-        "files": [
-            "src/Support/helpers.php"
-        ],
-        "psr-4": {
-            "SyncsRelations\\": "src/"
-        }
-    },
-    "autoload-dev": {
-        "psr-4": {
-            "SyncsRelations\\Tests\\": "tests"
-        }
-    },
-    "license": "MIT",
-    "authors": [
-        {
-            "name": "Sascha Gehlich",
-            "email": "sascha@gehlich.us"
-        }
-    ]
+  "name": "saschagehlich/syncs-relations",
+  "description": "Provides a SyncsRelations trait to Eloquent models",
+  "type": "library",
+  "require": {
+    "php": "^7.0|^8.0",
+    "illuminate/database": "^6.0|^7.0|^8.0|^9.0|^10.0"
+  },
+  "require-dev": {
+    "phpunit/phpunit": "^7.4",
+    "orchestra/database": "^3.6",
+    "orchestra/testbench": "^3.6",
+    "mockery/mockery": "^1.2"
+  },
+  "autoload": {
+    "files": [
+      "src/Support/helpers.php"
+    ],
+    "psr-4": {
+      "SyncsRelations\\": "src/"
+    }
+  },
+  "autoload-dev": {
+    "psr-4": {
+      "SyncsRelations\\Tests\\": "tests"
+    }
+  },
+  "license": "MIT",
+  "authors": [
+    {
+      "name": "Sascha Gehlich",
+      "email": "sascha@gehlich.us"
+    }
+  ]
 }
