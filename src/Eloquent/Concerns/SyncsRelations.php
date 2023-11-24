@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 use SyncsRelations\Tests\Models\Vehicle;
@@ -54,9 +55,9 @@ trait SyncsRelations {
         foreach ($syncedRelations as $relationName) {
             $present = array_key_exists($relationName, $attributes) ||
                 array_key_exists('new_' . $relationName, $attributes);
-            $data = array_pull($attributes, $relationName);
-            $delete = array_pull($attributes, 'delete_' . $relationName);
-            $new = array_pull($attributes, 'new_' . $relationName);
+            $data = Arr::pull($attributes, $relationName);
+            $delete = Arr::pull($attributes, 'delete_' . $relationName);
+            $new = Arr::pull($attributes, 'new_' . $relationName);
 
             if ($new) {
                 $data = $new;
