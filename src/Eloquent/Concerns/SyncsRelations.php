@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Str;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 use SyncsRelations\Tests\Models\Vehicle;
@@ -103,7 +104,7 @@ trait SyncsRelations {
      * @return $this;
      */
     protected function fillRelation (string $relationName, $data, bool $delete, bool $new) {
-        $methodName = camel_case($relationName);
+        $methodName = Str::camel($relationName);
         if (!method_exists($this, $methodName)) return $this;
 
         /** @var Relation $relation */
@@ -128,7 +129,7 @@ trait SyncsRelations {
      * @return $this
      */
     protected function saveRelation (string $relationName) {
-        $methodName = camel_case($relationName);
+        $methodName = Str::camel($relationName);
         if (!method_exists($this, $methodName)) return $this;
 
         /** @var Relation $relation */
@@ -397,7 +398,7 @@ trait SyncsRelations {
     }
 
     protected function isRelationDirty (string $relationName) {
-        $methodName = camel_case($relationName);
+        $methodName = Str::camel($relationName);
         if (!method_exists($this, $methodName)) return false;
 
         /** @var Relation $relation */
@@ -436,7 +437,7 @@ trait SyncsRelations {
         $syncedRelations = $this->getSyncedRelations();
 
         foreach ($syncedRelations as $relationName) {
-            $methodName = camel_case($relationName);
+            $methodName = Str::camel($relationName);
             if (!method_exists($this, $methodName)) continue;
 
             /** @var Relation $relation */
