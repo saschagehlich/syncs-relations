@@ -381,7 +381,7 @@ trait SyncsRelations {
         }
 
         $syncedRelations = $this->getSyncedRelations();
-        $attributes = array_keys(array_except($this->getAttributes(), $syncedRelations));
+        $attributes = array_keys(Arr::except($this->getAttributes(), $syncedRelations));
         return parent::isDirty($attributes);
     }
 
